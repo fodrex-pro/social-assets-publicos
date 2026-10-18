@@ -1,0 +1,32 @@
+name: Import Sunday Social Image
+
+on:
+  push:
+    paths:
+      - automation/import-sunday.flag
+
+permissions:
+  contents: write
+
+jobs:
+  import_image:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download approved image
+        run: |
+          mkdir -p 2026/10/25
+          curl --fail --location --silent --show-error 'https://uca9d81e5467386d901bdd7ec3ff.dl.dropboxusercontent.com/cd/0/get/DKTIqmcVGoQvUoZDY3a3UFqR_Qoaw-mOiIE43XLzfStxQawT6Zg7cjSR-wCywaVYoxMC_zu5xlOPR9cqLc6FqptneUur-Y3oV6eJGygczooqT0Iicb7yPd7rheFqKRKRWXnEl2-VO_1kc4OuA_ZYeLbhsc3oJ3kbyoBPI5Sfag4drg/file?c_luid=2aa1ba8d' -o 2026/10/25/tecnologia-hipoteca.jpg
+          test "$(head -c 2 2026/10/25/tecnologia-hipoteca.jpg | od -An -t x1 | tr -d ' \n')" = "ffd8"
+          test "$(wc -c < 2026/10/25/tecnologia-hipoteca.jpg)" -gt 100000
+
+      - name: Commit corrected binary
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add 2026/10/25/tecnologia-hipoteca.jpg
+          git diff --cached --quiet && exit 0
+          git commit -m 'Fix approved Sunday social image binary'
+          git push
