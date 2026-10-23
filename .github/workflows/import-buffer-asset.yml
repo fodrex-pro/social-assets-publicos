@@ -15,33 +15,54 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Download approved asset
+      - name: Download approved assets
         shell: bash
         run: |
           set -euo pipefail
-          SOURCE_URL="$(jq -r '.source_url' automation/import-buffer-asset.json)"
-          DESTINATION="$(jq -r '.destination' automation/import-buffer-asset.json)"
-          if [ -z "$SOURCE_URL" ] || [ "$SOURCE_URL" = "null" ] || [ -z "$DESTINATION" ] || [ "$DESTINATION" = "null" ]; then
-            echo 'Missing source_url or destination' >&2
-            exit 1
-          fi
-          mkdir -p "$(dirname "$DESTINATION")"
-          curl --fail --location --silent --show-error "$SOURCE_URL" -o "$DESTINATION"
-          test "$(wc -c < "$DESTINATION")" -gt 10000
-          MIME="$(file --brief --mime-type "$DESTINATION")"
-          case "$MIME" in
-            image/jpeg|image/png|image/webp) ;;
-            *) echo "Unexpected MIME: $MIME" >&2; exit 1 ;;
-          esac
 
-      - name: Commit public asset
+          if jq -e '.assets and (.assets | type == "array") and (.assets | length > 0)' automation/import-buffer-asset.json >/dev/null; then
+            jq -c '.assets[]' automation/import-buffer-asset.json > /tmp/buffer-assets.jsonl
+          else
+            jq -c '{source_url: .source_url, destination: .destination}' automation/import-buffer-asset.json > /tmp/buffer-assets.jsonl
+          fi
+
+          COUNT=0
+          while IFS= read -r ITEM; do
+            SOURCE_URL="$(printf '%s' "$ITEM" | jq -r '.source_url')"
+            DESTINATION="$(printf '%s' "$ITEM" | jq -r '.destination')"
+            if [ -z "$SOURCE_URL" ] || [ "$SOURCE_URL" = "null" ] || [ -z "$DESTINATION" ] || [ "$DESTINATION" = "null" ]; then
+              echo 'Missing source_url or destination' >&2
+              exit 1
+            fi
+            mkdir -p "$(dirname "$DESTINATION")"
+            curl --fail --location --silent --show-error "$SOURCE_URL" -o "$DESTINATION"
+            test "$(wc -c < "$DESTINATION")" -gt 10000
+            MIME="$(file --brief --mime-type "$DESTINATION")"
+            case "$MIME" in
+              image/jpeg|image/png|image/webp) ;;
+              *) echo "Unexpected MIME for $DESTINATION: $MIME" >&2; exit 1 ;;
+            esac
+            COUNT=$((COUNT + 1))
+            echo "Imported $COUNT: $DESTINATION ($MIME)"
+          done < /tmp/buffer-assets.jsonl
+
+          test "$COUNT" -gt 0
+
+      - name: Commit public assets
         shell: bash
         run: |
           set -euo pipefail
-          DESTINATION="$(jq -r '.destination' automation/import-buffer-asset.json)"
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add "$DESTINATION"
+
+          if jq -e '.assets and (.assets | type == "array") and (.assets | length > 0)' automation/import-buffer-asset.json >/dev/null; then
+            while IFS= read -r DESTINATION; do
+              git add "$DESTINATION"
+            done < <(jq -r '.assets[].destination' automation/import-buffer-asset.json)
+          else
+            git add "$(jq -r '.destination' automation/import-buffer-asset.json)"
+          fi
+
           git diff --cached --quiet && exit 0
-          git commit -m "Import Buffer asset: $DESTINATION"
+          git commit -m "Import Buffer assets"
           git push
