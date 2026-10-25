@@ -23,21 +23,26 @@ jobs:
           if jq -e '.assets and (.assets | type == "array") and (.assets | length > 0)' automation/import-buffer-asset.json >/dev/null; then
             jq -c '.assets[]' automation/import-buffer-asset.json > /tmp/buffer-assets.jsonl
           else
-            jq -c '{source_url: .source_url, source_base64: .source_base64, destination: .destination}' automation/import-buffer-asset.json > /tmp/buffer-assets.jsonl
+            jq -c '{source_url: .source_url, source_url_base64: .source_url_base64, source_base64: .source_base64, destination: .destination}' automation/import-buffer-asset.json > /tmp/buffer-assets.jsonl
           fi
 
           COUNT=0
           while IFS= read -r ITEM; do
             SOURCE_URL="$(printf '%s' "$ITEM" | jq -r '.source_url // empty')"
+            SOURCE_URL_BASE64="$(printf '%s' "$ITEM" | jq -r '.source_url_base64 // empty')"
             SOURCE_BASE64="$(printf '%s' "$ITEM" | jq -r '.source_base64 // empty')"
             DESTINATION="$(printf '%s' "$ITEM" | jq -r '.destination // empty')"
+
+            if [ -n "$SOURCE_URL_BASE64" ]; then
+              SOURCE_URL="$(printf '%s' "$SOURCE_URL_BASE64" | base64 --decode)"
+            fi
 
             if [ -z "$DESTINATION" ]; then
               echo 'Missing destination' >&2
               exit 1
             fi
             if [ -z "$SOURCE_URL" ] && [ -z "$SOURCE_BASE64" ]; then
-              echo 'Missing source_url or source_base64' >&2
+              echo 'Missing source_url, source_url_base64, or source_base64' >&2
               exit 1
             fi
 
