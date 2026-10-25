@@ -23,19 +23,31 @@ jobs:
           if jq -e '.assets and (.assets | type == "array") and (.assets | length > 0)' automation/import-buffer-asset.json >/dev/null; then
             jq -c '.assets[]' automation/import-buffer-asset.json > /tmp/buffer-assets.jsonl
           else
-            jq -c '{source_url: .source_url, destination: .destination}' automation/import-buffer-asset.json > /tmp/buffer-assets.jsonl
+            jq -c '{source_url: .source_url, source_base64: .source_base64, destination: .destination}' automation/import-buffer-asset.json > /tmp/buffer-assets.jsonl
           fi
 
           COUNT=0
           while IFS= read -r ITEM; do
-            SOURCE_URL="$(printf '%s' "$ITEM" | jq -r '.source_url')"
-            DESTINATION="$(printf '%s' "$ITEM" | jq -r '.destination')"
-            if [ -z "$SOURCE_URL" ] || [ "$SOURCE_URL" = "null" ] || [ -z "$DESTINATION" ] || [ "$DESTINATION" = "null" ]; then
-              echo 'Missing source_url or destination' >&2
+            SOURCE_URL="$(printf '%s' "$ITEM" | jq -r '.source_url // empty')"
+            SOURCE_BASE64="$(printf '%s' "$ITEM" | jq -r '.source_base64 // empty')"
+            DESTINATION="$(printf '%s' "$ITEM" | jq -r '.destination // empty')"
+
+            if [ -z "$DESTINATION" ]; then
+              echo 'Missing destination' >&2
               exit 1
             fi
+            if [ -z "$SOURCE_URL" ] && [ -z "$SOURCE_BASE64" ]; then
+              echo 'Missing source_url or source_base64' >&2
+              exit 1
+            fi
+
             mkdir -p "$(dirname "$DESTINATION")"
-            curl --fail --location --silent --show-error "$SOURCE_URL" -o "$DESTINATION"
+            if [ -n "$SOURCE_BASE64" ]; then
+              printf '%s' "$SOURCE_BASE64" | base64 --decode > "$DESTINATION"
+            else
+              curl --fail --location --silent --show-error "$SOURCE_URL" -o "$DESTINATION"
+            fi
+
             test "$(wc -c < "$DESTINATION")" -gt 10000
             MIME="$(file --brief --mime-type "$DESTINATION")"
             case "$MIME" in
